@@ -1,0 +1,8 @@
+langchain
+langchain-openai
+langchain-experimental
+requests
+beautifulsoup4
+baidusearch
+python-dotenv
+pytest
