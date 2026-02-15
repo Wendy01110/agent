@@ -4,12 +4,16 @@ from __future__ import annotations
 from config.model_utils import ModelConfig, TokenPriceInfo
 from config.env import get_env
 
+DEFAULT_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
+ARK_API_KEY = get_env("ARK_API_KEY") or get_env("HUOSHAN_API_KEY")
+ARK_BASE_URL = get_env("ARK_BASE_URL", DEFAULT_ARK_BASE_URL)
+
 
 HUOSHAN_DOUBAO = ModelConfig(
     provider="huoshan",
     id="doubao-seed-1-8-251228",
-    base_url="https://ark.cn-beijing.volces.com/api/v3",
-    api_key=get_env("HUOSHAN_API_KEY"),
+    base_url=ARK_BASE_URL,
+    api_key=ARK_API_KEY,
     temperature=0.3,
     max_completion_tokens=4096,
     provider_params={
@@ -31,8 +35,8 @@ HUOSHAN_DOUBAO = ModelConfig(
 HUOSHAN_DEEPSEEK = ModelConfig(
     provider="huoshan",
     id="deepseek-v3-2-251201",
-    base_url="https://ark.cn-beijing.volces.com/api/v3",
-    api_key=get_env("HUOSHAN_API_KEY"),
+    base_url=ARK_BASE_URL,
+    api_key=ARK_API_KEY,
     temperature=0.2,
     max_completion_tokens=4096,
     provider_params={

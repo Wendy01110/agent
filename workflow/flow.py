@@ -11,6 +11,7 @@ from agents.planner import PlannerAgent
 from agents.executor import ToolExecutorAgent
 from agents.analyst import AnalystAgent
 from workflow.callbacks import StreamCallbackHandler, TokenUsageCallbackHandler
+from workflow.langfuse_callback import build_langfuse_callback
 
 
 def run_flow(user_input: str, stream: bool = True) -> Dict[str, Any]:
@@ -25,28 +26,47 @@ def run_flow(user_input: str, stream: bool = True) -> Dict[str, Any]:
     tool_desc = describe_tools(tools)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    planner_cb = (
-        [StreamCallbackHandler("PLANNER", include_tools=False), TokenUsageCallbackHandler("PLANNER", model_cfg)]
-        if stream
-        else None
-    )
-    executor_cb = (
-        [StreamCallbackHandler("EXECUTOR", include_tools=True), TokenUsageCallbackHandler("EXECUTOR", model_cfg)]
-        if stream
-        else None
-    )
-    analyst_cb = (
-        [StreamCallbackHandler("ANALYST", include_tools=False), TokenUsageCallbackHandler("ANALYST", model_cfg)]
-        if stream
-        else None
-    )
+    langfuse_cb = build_langfuse_callback()
 
-    plan = planner.plan(user_input, tool_desc=tool_desc, now=now, callbacks=planner_cb)
+    planner_cb = []
+    executor_cb = []
+    analyst_cb = []
+
+    if stream:
+        planner_cb.extend(
+            [StreamCallbackHandler("PLANNER", include_tools=False), TokenUsageCallbackHandler("PLANNER", model_cfg)]
+        )
+        executor_cb.extend(
+            [StreamCallbackHandler("EXECUTOR", include_tools=True), TokenUsageCallbackHandler("EXECUTOR", model_cfg)]
+        )
+        analyst_cb.extend(
+            [StreamCallbackHandler("ANALYST", include_tools=False), TokenUsageCallbackHandler("ANALYST", model_cfg)]
+        )
+
+    if langfuse_cb is not None:
+        planner_cb.append(langfuse_cb)
+        executor_cb.append(langfuse_cb)
+        analyst_cb.append(langfuse_cb)
+
+    plan = planner.plan(
+        user_input,
+        tool_desc=tool_desc,
+        now=now,
+        callbacks=planner_cb or None,
+    )
     exec_result = executor.execute(
-        user_input=user_input, plan=plan, now=now, callbacks=executor_cb
+        user_input=user_input,
+        plan=plan,
+        now=now,
+        callbacks=executor_cb or None,
     )
     final_answer = analyst.summarize(
-        user_input, plan, exec_result, tool_desc=tool_desc, now=now, callbacks=analyst_cb
+        user_input,
+        plan,
+        exec_result,
+        tool_desc=tool_desc,
+        now=now,
+        callbacks=analyst_cb or None,
     )
 
     return {

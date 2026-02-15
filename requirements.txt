@@ -6,3 +6,4 @@ beautifulsoup4
 baidusearch
 python-dotenv
 pytest
+langfuse

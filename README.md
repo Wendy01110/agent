@@ -47,8 +47,24 @@ BOCHA_API_KEY=your_bocha_api_key
 
 说明：
 
-- LLM 默认读取 `ARK_*` 配置；如未配置，则会回退到 `OPENAI_*`（如有）。
+- LLM 默认读取 `ARK_*` 配置。
+- 为兼容旧配置，代码仍支持读取 `HUOSHAN_API_KEY` 作为备用。
 - Bocha 搜索工具需要 `BOCHA_API_KEY`，否则会报错。
+- Langfuse 可选开启，用于查看 LLM/Tool 调用链路与 token 用量。
+
+Langfuse 配置示例：
+
+```env
+LANGFUSE_ENABLED=1
+LANGFUSE_PUBLIC_KEY=pk-lf-xxxx
+LANGFUSE_SECRET_KEY=sk-lf-xxxx
+LANGFUSE_HOST=https://cloud.langfuse.com
+```
+
+说明：
+
+- `LANGFUSE_ENABLED=1` 时，`workflow/flow.py` 会自动注入 Langfuse callback。
+- 未安装 `langfuse` 或配置缺失时，会打印提示并继续运行，不影响主流程。
 
 `.env` 模板见：`.env.example`
 
