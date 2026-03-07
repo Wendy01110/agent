@@ -43,6 +43,9 @@ ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 
 # Bocha 搜索
 BOCHA_API_KEY=your_bocha_api_key
+
+# 高德天气
+AMAP_API_KEY=your_amap_api_key
 ```
 
 说明：
@@ -50,6 +53,7 @@ BOCHA_API_KEY=your_bocha_api_key
 - LLM 默认读取 `ARK_*` 配置。
 - 为兼容旧配置，代码仍支持读取 `HUOSHAN_API_KEY` 作为备用。
 - Bocha 搜索工具需要 `BOCHA_API_KEY`，否则会报错。
+- 天气工具使用高德天气 API，需要 `AMAP_API_KEY`。
 - Langfuse 可选开启，用于查看 LLM/Tool 调用链路与 token 用量。
 
 Langfuse 配置示例：

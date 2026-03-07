@@ -33,7 +33,7 @@ def _normalize_results(results: List[Dict[str, object]]) -> List[Dict[str, str]]
 
 
 class BochaSearchTool(BaseTool):
-    name: str = "bocha_search"
+    name: str = "web_search"
     description: str = (
         "通过 Bocha API 进行网页搜索并返回结构化结果。"
         "输入：query(关键词), summary(是否返回摘要), freshness(时间范围), count(结果数)。"

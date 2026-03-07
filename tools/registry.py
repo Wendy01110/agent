@@ -31,11 +31,14 @@ def describe_tools(tools: List[Tool]) -> str:
 
 
 def get_tools(llm) -> List[Tool]:
-    """Return the list of tools available to the ToolExecutorAgent."""
+    """
+        Return the list of tools available to the ToolExecutorAgent.
+        web search 和 bocha search 二选一
+    """
     return [
         CalculatorTool(llm),
         PythonTool(),
-        WebSearchTool(),
+        # WebSearchTool(),
         BochaSearchTool(),
         WeatherTool(),
     ]

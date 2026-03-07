@@ -1,99 +1,126 @@
-"""Weather tool using wttr.in free endpoint."""
+"""Weather tool powered by AMap Weather API."""
 from __future__ import annotations
 
+import os
 from typing import Dict, Any, Optional
 
 import requests
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
+AMAP_WEATHER_URL = "https://restapi.amap.com/v3/weather/weatherInfo"
+AMAP_DISTRICT_URL = "https://restapi.amap.com/v3/config/district"
 
-WTTR_URL = "https://wttr.in"
+
+def _request_json(url: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    """Send HTTP request and parse JSON payload."""
+    response = requests.get(
+        url,
+        params=params,
+        timeout=30,
+        proxies={"http": None, "https": None},
+    )
+    response.raise_for_status()
+    data = response.json()
+    if str(data.get("status")) != "1":
+        raise ValueError(data.get("info", "AMap API request failed"))
+    return data
 
 
-def _format_weather(payload: Dict[str, Any]) -> str:
-    current = (payload.get("current_condition") or [{}])[0]
-    area = (payload.get("nearest_area") or [{}])[0]
-    area_name = (area.get("areaName") or [{}])[0].get("value", "")
-    temp_c = current.get("temp_C", "")
-    temp_f = current.get("temp_F", "")
-    weather_desc = (current.get("weatherDesc") or [{}])[0].get("value", "")
-    feels_like_c = current.get("FeelsLikeC", "")
-    humidity = current.get("humidity", "")
-    wind_kph = current.get("windspeedKmph", "")
+def _resolve_adcode(city: str, key: str) -> str:
+    """Resolve city keyword to adcode, pass through when already adcode."""
+    clean_city = city.strip()
+    if clean_city.isdigit() and len(clean_city) == 6:
+        return clean_city
 
+    data = _request_json(
+        AMAP_DISTRICT_URL,
+        {"keywords": clean_city, "key": key, "subdistrict": 0, "extensions": "base"},
+    )
+    districts = data.get("districts") or []
+    if not districts:
+        raise ValueError(f"未找到城市对应 adcode: {city}")
+    adcode = str(districts[0].get("adcode", "")).strip()
+    if not adcode:
+        raise ValueError(f"未找到城市对应 adcode: {city}")
+    return adcode
+
+
+def _format_live(data: Dict[str, Any]) -> str:
+    """Format AMap current weather payload."""
+    live = (data.get("lives") or [{}])[0]
+    province = live.get("province", "")
+    city = live.get("city", "")
+    weather = live.get("weather", "")
+    temperature = live.get("temperature", "")
+    winddirection = live.get("winddirection", "")
+    windpower = live.get("windpower", "")
+    humidity = live.get("humidity", "")
+    reporttime = live.get("reporttime", "")
+    location = city or province
     return (
-        f"{area_name} | {weather_desc} | "
-        f"{temp_c}°C/{temp_f}°F (feels {feels_like_c}°C) | "
-        f"humidity {humidity}% | wind {wind_kph} km/h"
+        f"{location} | {weather} | {temperature}°C | "
+        f"湿度 {humidity}% | 风向 {winddirection} 风力 {windpower}级 | 更新时间 {reporttime}"
     )
 
 
+def _format_forecast(data: Dict[str, Any], days: int) -> list[str]:
+    """Format AMap forecast payload."""
+    forecast = (data.get("forecasts") or [{}])[0]
+    casts = (forecast.get("casts") or [])[:days]
+    lines = []
+    for item in casts:
+        date = item.get("date", "")
+        dayweather = item.get("dayweather", "")
+        nightweather = item.get("nightweather", "")
+        daytemp = item.get("daytemp", "")
+        nighttemp = item.get("nighttemp", "")
+        daywind = item.get("daywind", "")
+        nightwind = item.get("nightwind", "")
+        daypower = item.get("daypower", "")
+        nightpower = item.get("nightpower", "")
+        lines.append(
+            f"{date} | 白天{dayweather} {daytemp}°C {daywind}风{daypower}级 | "
+            f"夜间{nightweather} {nighttemp}°C {nightwind}风{nightpower}级"
+        )
+    return lines
+
+
 class WeatherArgs(BaseModel):
-    city: str = Field(..., description="City English name.")
-    days: int = Field(1, description="Number of days to return (1-3 recommended).")
-    hourly: bool = Field(False, description="Whether to include today's hourly forecast.")
+    city: str = Field(..., description="城市名（中文/英文）或 adcode（6位行政区编码）。")
+    days: int = Field(1, description="返回天数，1-4。>1 时返回未来预报。")
+    hourly: bool = Field(False, description="兼容参数；高德不提供小时级预报。")
 
 
 class WeatherTool(BaseTool):
     name: str = "weather"
     description: str = (
-        "获取城市天气（当前 + 可选多日/分时段）。"
-        "输入：city(城市的英文名), days(天数, 建议1-3), hourly(是否包含当天分时段)。"
-        "输出：多行字符串，首行为当前天气，其次可含Hourly分时段，最后为每日预报。"
-        "示例：weather(city='Beijing', days=3, hourly=True)。"
-        "适用：需要即时天气与短期预报的场景。"
-        "城市名需要使用英文，例如 Beijing, Shanghai, New York。不支持中文。"
+        "通过高德天气 API 获取天气。"
+        "输入：city(城市名或 adcode), days(1-4), hourly(兼容参数)。"
+        "输出：字符串，首行为实时天气，必要时附加未来天气预报。"
+        "示例：weather(city='北京', days=3, hourly=False)。"
+        "说明：需要 AMAP_API_KEY 环境变量。"
     )
     args_schema: Optional[type[BaseModel]] = WeatherArgs
 
     def _run(self, *, city: str, days: int = 1, hourly: bool = False) -> str:
-        url = f"{WTTR_URL}/{city}"
-        response = requests.get(
-            url,
-            params={"format": "j1", "num_of_days": days},
-            timeout=30,
-            proxies={"http": None, "https": None},
+        api_key = os.getenv("AMAP_API_KEY") or os.getenv("GAODE_API_KEY")
+        if not api_key:
+            raise ValueError("AMAP_API_KEY is required for weather")
+
+        query_days = max(1, min(days, 4))
+        adcode = _resolve_adcode(city, api_key)
+
+        live_data = _request_json(
+            AMAP_WEATHER_URL,
+            {"city": adcode, "key": api_key, "extensions": "base", "output": "JSON"},
         )
-        response.raise_for_status()
-        data = response.json()
+        lines = [_format_live(live_data)]
 
-        if days <= 1 and not hourly:
-            return _format_weather(data)
-
-        forecast_days = data.get("weather", [])[:days]
-        lines = [_format_weather(data)]
-        if hourly:
-            today = (data.get("weather") or [{}])[0]
-            hourly_items = today.get("hourly", []) or []
-            hourly_lines = []
-            for item in hourly_items:
-                time_raw = item.get("time", "")
-                if str(time_raw).isdigit():
-                    padded = str(time_raw).zfill(4)
-                    hour = int(padded[:-2])
-                    minute = int(padded[-2:])
-                    time_str = f"{hour:02d}:{minute:02d}"
-                else:
-                    time_str = str(time_raw)
-                temp_c = item.get("tempC", "")
-                desc = (item.get("weatherDesc") or [{}])[0].get("value", "").strip()
-                feels_c = item.get("FeelsLikeC", "")
-                hourly_lines.append(
-                    f"{time_str} | {desc} | {temp_c}°C (feels {feels_c}°C)"
-                )
-            if hourly_lines:
-                lines.append("Hourly:")
-                lines.extend(hourly_lines)
-        for day in forecast_days:
-            date = day.get("date", "")
-            maxtemp_c = day.get("maxtempC", "")
-            mintemp_c = day.get("mintempC", "")
-            avgtemp_c = day.get("avgtempC", "")
-            desc = ((day.get("hourly") or [{}])[0].get("weatherDesc") or [{}])[0].get(
-                "value", ""
+        if query_days > 1 or hourly:
+            forecast_data = _request_json(
+                AMAP_WEATHER_URL,
+                {"city": adcode, "key": api_key, "extensions": "all", "output": "JSON"},
             )
-            lines.append(
-                f"{date} | {desc} | {mintemp_c}°C~{maxtemp_c}°C (avg {avgtemp_c}°C)"
-            )
+            lines.extend(_format_forecast(forecast_data, query_days))
         return "\n".join(lines)

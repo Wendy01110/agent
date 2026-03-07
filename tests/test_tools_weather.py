@@ -13,30 +13,41 @@ class DummyResponse:
 
 
 def test_weather_formats_output(monkeypatch):
-    payload = {
-        "current_condition": [
+    district_payload = {
+        "status": "1",
+        "districts": [{"name": "北京市", "adcode": "110000"}],
+    }
+    live_payload = {
+        "status": "1",
+        "lives": [
             {
-                "temp_C": "10",
-                "temp_F": "50",
-                "weatherDesc": [{"value": "Cloudy"}],
-                "FeelsLikeC": "8",
+                "province": "北京",
+                "city": "北京市",
+                "weather": "多云",
+                "temperature": "10",
+                "winddirection": "北",
+                "windpower": "3",
                 "humidity": "60",
-                "windspeedKmph": "12",
+                "reporttime": "2025-01-01 10:00:00",
             }
         ],
-        "nearest_area": [{"areaName": [{"value": "Beijing"}]}],
-        "weather": [
+    }
+    forecast_payload = {
+        "status": "1",
+        "forecasts": [
             {
-                "date": "2025-01-01",
-                "maxtempC": "12",
-                "mintempC": "5",
-                "avgtempC": "8",
-                "hourly": [
+                "city": "北京市",
+                "casts": [
                     {
-                        "time": "0",
-                        "tempC": "6",
-                        "FeelsLikeC": "4",
-                        "weatherDesc": [{"value": "Sunny"}],
+                        "date": "2025-01-01",
+                        "dayweather": "晴",
+                        "nightweather": "多云",
+                        "daytemp": "12",
+                        "nighttemp": "5",
+                        "daywind": "北",
+                        "nightwind": "北",
+                        "daypower": "3",
+                        "nightpower": "2",
                     }
                 ],
             }
@@ -44,16 +55,21 @@ def test_weather_formats_output(monkeypatch):
     }
 
     def fake_get(*args, **kwargs):
-        return DummyResponse(payload)
+        url = args[0]
+        if url.endswith("/district"):
+            return DummyResponse(district_payload)
+        if kwargs.get("params", {}).get("extensions") == "all":
+            return DummyResponse(forecast_payload)
+        return DummyResponse(live_payload)
 
     monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setenv("AMAP_API_KEY", "test-key")
     tool = WeatherTool()
-    result = tool.invoke({"city": "Beijing", "days": 2, "hourly": True})
+    result = tool.invoke({"city": "北京", "days": 2, "hourly": True})
     print("weather mock result:", result)
 
-    assert "Beijing" in result
-    assert "Cloudy" in result
-    assert "10°C/50°F" in result
+    assert "北京市" in result
+    assert "多云" in result
+    assert "10°C" in result
     assert "2025-01-01" in result
-    assert "Hourly:" in result
-    assert "00:00" in result
+    assert "白天晴" in result
