@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart Agent Chat</title>
+  <style>
+    :root {
+      --bg: #edf2f7;
+      --panel: #ffffff;
+      --ink: #13253a;
+      --muted: #5f7288;
+      --brand: #0b74c5;
+      --border: #d4dfeb;
+      --user: #edf6ff;
+      --agent: #f8fbff;
+      --result: #f0f8ef;
+      --accent: #1c9a5f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background: linear-gradient(135deg, #d6e8fb 0%, var(--bg) 45%, #f8fbff 100%);
+    }
+    .shell {
+      max-width: 1100px;
+      margin: 20px auto;
+      padding: 0 12px;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 14px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(16, 43, 78, 0.06);
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+    }
+    .tip {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    select, textarea, button {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 14px;
+      background: #fff;
+      color: var(--ink);
+    }
+    textarea { min-height: 100px; resize: vertical; }
+    .ops { display: flex; gap: 8px; margin-top: 10px; }
+    .ops button { flex: 1; cursor: pointer; }
+    .primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+    }
+    .chat {
+      height: 78vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .timeline {
+      flex: 1;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: linear-gradient(180deg, #f6f9fc 0%, #f3f7fc 100%);
+    }
+    .bubble {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .user { background: var(--user); }
+    .assistant { background: var(--agent); }
+    .round-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .thinking-live {
+      border: 1px dashed #9bc4e7;
+      border-radius: 8px;
+      padding: 6px 8px;
+      color: #2d597a;
+      background: #eff7ff;
+      font-size: 12px;
+      margin: 8px 0;
+    }
+    .trace-card {
+      margin-top: 8px;
+    }
+    .trace-fold, .trace-live {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px;
+    }
+    .trace-fold > summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: #17445d;
+    }
+    .trace-live-head {
+      font-weight: 600;
+      color: #17445d;
+      margin-bottom: 6px;
+      text-transform: capitalize;
+    }
+    .trace-title {
+      margin: 8px 0 6px;
+      color: #2f4a62;
+      font-size: 13px;
+    }
+    .trace-section {
+      margin-top: 6px;
+      color: #2f4a62;
+      font-size: 13px;
+    }
+    .trace-content {
+      margin: 6px 0 0;
+      padding: 8px;
+      background: #f1f6fb;
+      border-radius: 6px;
+      overflow: hidden;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    .trace-content p { margin: 0 0 8px; }
+    .trace-content p:last-child { margin-bottom: 0; }
+    .trace-content code {
+      background: #e8eef5;
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .trace-content pre {
+      margin: 0 0 8px;
+      padding: 8px;
+      background: #1b2b3d;
+      color: #eff5fb;
+      border-radius: 6px;
+      overflow: auto;
+    }
+    .final-block {
+      margin-top: 10px;
+      border: 1px solid #b6dfc8;
+      border-radius: 10px;
+      background: var(--result);
+      padding: 10px;
+    }
+    .final-title {
+      color: #21784d;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .composer { margin-top: 10px; }
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: 1fr; }
+      .chat { height: auto; min-height: 70vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="panel">
+      <h1>Smart Agent</h1>
+      <div class="tip">多轮对话 + Agent 轨迹（推理/输入输出/工具调用）</div>
+
+      <label for="workflow">Workflow</label>
+      <select id="workflow"></select>
+
+      <label for="model" style="margin-top:10px;">Model</label>
+      <select id="model"></select>
+
+      <label for="tools" style="margin-top:10px;">Tools (Ctrl/Cmd 多选)</label>
+      <select id="tools" multiple size="8"></select>
+
+      <div class="ops">
+        <button id="clearBtn">清空会话</button>
+      </div>
+    </div>
+
+    <div class="panel chat">
+      <div id="timeline" class="timeline"></div>
+      <div class="composer">
+        <label for="input">输入</label>
+        <textarea id="input" placeholder="输入问题并回车发送，Shift+Enter 换行"></textarea>
+        <div class="ops">
+          <button id="sendBtn" class="primary">发送</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const workflowEl = document.getElementById("workflow");
+    const modelEl = document.getElementById("model");
+    const toolsEl = document.getElementById("tools");
+    const timelineEl = document.getElementById("timeline");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("sendBtn");
+    const clearBtn = document.getElementById("clearBtn");
+
+    const STORAGE_KEY = "smart_agent_web_chat_v1";
+    const state = { history: [] };
+
+    function saveState() {
+      const payload = {
+        history: state.history,
+        workflow: workflowEl.value || "",
+        model: modelEl.value || "",
+        tools: getSelectedTools(),
+        draft: inputEl.value || "",
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    const esc = (s) => String(s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    function markdownToHtml(md) {
+      let text = esc(md || "");
+      text = text.replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${code}</code></pre>`);
+      text = text.replace(/`([^`]+)`/g, "<code>$1</code>");
+      text = text.replace(/^### (.*)$/gm, "<h3>$1</h3>");
+      text = text.replace(/^## (.*)$/gm, "<h2>$1</h2>");
+      text = text.replace(/^# (.*)$/gm, "<h1>$1</h1>");
+      text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      text = text.replace(/\*(.*?)\*/g, "<em>$1</em>");
+      text = text.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      text = text.replace(/^- (.*)$/gm, "<li>$1</li>");
+      text = text.replace(/(<li>[\s\S]*?<\/li>)/g, "<ul>$1</ul>");
+      const chunks = text.split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+      return chunks.map((x) => (x.startsWith("<") ? x : `<p>${x.replace(/\n/g, "<br>")}</p>`)).join("");
+    }
+
+    function getSelectedTools() {
+      return Array.from(toolsEl.selectedOptions).map((o) => o.value);
+    }
+
+    function ensureAgentTrace(round, agent) {
+      if (!round.trace) round.trace = {};
+      if (!round.trace[agent]) {
+        const outputKey = agent === "planner" ? "plan" : (agent === "executor" ? "output" : "final");
+        round.trace[agent] = { reasoning: "", output: { [outputKey]: "" } };
+      }
+      return round.trace[agent];
+    }
+
+    function getVisibleAgents(trace) {
+      const order = ["planner", "executor", "analyst"];
+      return order.filter((name) => trace && trace[name]);
+    }
+
+    function renderTimeline() {
+      const prevScrollTop = timelineEl.scrollTop;
+      const prevScrollHeight = timelineEl.scrollHeight;
+      const shouldStickToBottom =
+        (prevScrollHeight - prevScrollTop - timelineEl.clientHeight) < 80;
+
+      timelineEl.innerHTML = "";
+      if (!state.history.length) {
+        timelineEl.innerHTML = '<div class="bubble assistant">会话为空，发送第一条消息开始。</div>';
+        return;
+      }
+      state.history.forEach((round) => {
+        const user = document.createElement("div");
+        user.className = "bubble user";
+        user.textContent = `你：${round.user}`;
+        timelineEl.appendChild(user);
+
+        const assistant = document.createElement("div");
+        assistant.className = "bubble assistant";
+
+        const status = round.status || "done";
+        const meta = document.createElement("div");
+        meta.className = "round-meta";
+        meta.textContent = status === "streaming" ? "多 Agent 思考中（实时）" : "思考过程（已折叠）";
+        assistant.appendChild(meta);
+
+        if (status === "streaming") {
+          const live = document.createElement("div");
+          live.className = "thinking-live";
+          live.textContent = "流式输出中，内容不折叠。";
+          assistant.appendChild(live);
+          const visibleAgents = getVisibleAgents(round.trace);
+          visibleAgents.forEach((agent) => {
+            const outputKey = agent === "planner" ? "plan" : (agent === "executor" ? "output" : "final");
+            assistant.appendChild(buildTraceCard(agent, round.trace[agent], outputKey));
+          });
+        } else {
+          const fold = document.createElement("details");
+          fold.className = "trace-fold";
+          fold.innerHTML = "<summary>查看思考过程</summary>";
+          const visibleAgents = getVisibleAgents(round.trace);
+          visibleAgents.forEach((agent) => {
+            const outputKey = agent === "planner" ? "plan" : (agent === "executor" ? "output" : "final");
+            fold.appendChild(buildTraceCard(agent, round.trace[agent], outputKey));
+          });
+          assistant.appendChild(fold);
+        }
+
+        if (round.assistant) {
+          const finalBlock = document.createElement("div");
+          finalBlock.className = "final-block";
+          finalBlock.innerHTML = `<div class="final-title">最终结果</div><div class="trace-content">${markdownToHtml(round.assistant)}</div>`;
+          assistant.appendChild(finalBlock);
+        }
+        timelineEl.appendChild(assistant);
+      });
+      if (shouldStickToBottom) {
+        timelineEl.scrollTop = timelineEl.scrollHeight;
+      } else {
+        timelineEl.scrollTop = prevScrollTop;
+      }
+      saveState();
+    }
+
+    function buildTraceCard(agentName, trace, outputKey) {
+      const card = document.createElement("div");
+      card.className = "trace-card";
+      const reasoning = trace?.reasoning || "无";
+      const output = trace?.output?.[outputKey] || "无";
+      card.innerHTML = `
+        <div class="trace-live">
+          <div class="trace-live-head">${agentName}</div>
+          <div class="trace-title">推理</div>
+          <div class="trace-content">${markdownToHtml(reasoning)}</div>
+          <div class="trace-title">回答结果</div>
+          <div class="trace-content">${markdownToHtml(output)}</div>
+        </div>
+      `;
+      return card;
+    }
+
+    async function loadWorkflows() {
+      const res = await fetch("/api/workflows");
+      const data = await res.json();
+      workflowEl.innerHTML = "";
+      (data.workflows || []).forEach((wf) => {
+        const opt = document.createElement("option");
+        opt.value = wf.name;
+        opt.textContent = wf.label || wf.name;
+        workflowEl.appendChild(opt);
+      });
+    }
+
+    async function loadModels() {
+      const res = await fetch("/api/models");
+      const data = await res.json();
+      modelEl.innerHTML = "";
+      (data.models || []).forEach((item) => {
+        const opt = document.createElement("option");
+        opt.value = item.id;
+        opt.textContent = `${item.label} (${item.id})`;
+        if (item.id === data.default_model_id) {
+          opt.selected = true;
+        }
+        modelEl.appendChild(opt);
+      });
+      if (!modelEl.value && modelEl.options.length > 0) {
+        modelEl.selectedIndex = 0;
+      }
+    }
+
+    async function loadTools() {
+      const modelId = modelEl.value || "";
+      const url = modelId ? `/api/tools?model_id=${encodeURIComponent(modelId)}` : "/api/tools";
+      const res = await fetch(url);
+      const data = await res.json();
+      toolsEl.innerHTML = "";
+      (data.tools || []).forEach((tool) => {
+        const opt = document.createElement("option");
+        opt.value = tool.name;
+        opt.textContent = `${tool.name} - ${tool.description || ""}`;
+        toolsEl.appendChild(opt);
+      });
+    }
+
+    function restoreSelections(cached) {
+      if (!cached) return;
+      if (cached.workflow) {
+        const wf = Array.from(workflowEl.options).find((o) => o.value === cached.workflow);
+        if (wf) workflowEl.value = cached.workflow;
+      }
+      if (cached.model) {
+        const m = Array.from(modelEl.options).find((o) => o.value === cached.model);
+        if (m) modelEl.value = cached.model;
+      }
+      if (typeof cached.draft === "string") {
+        inputEl.value = cached.draft;
+      }
+    }
+
+    function restoreToolSelections(cached) {
+      if (!cached || !Array.isArray(cached.tools)) return;
+      const selected = new Set(cached.tools);
+      Array.from(toolsEl.options).forEach((opt) => {
+        opt.selected = selected.has(opt.value);
+      });
+    }
+
+    function setSending(flag) {
+      sendBtn.disabled = flag;
+      inputEl.disabled = flag;
+      sendBtn.textContent = flag ? "发送中..." : "发送";
+    }
+
+    async function sendMessage() {
+      const input = inputEl.value.trim();
+      if (!input) return;
+      setSending(true);
+      const round = {
+        user: input,
+        assistant: "",
+        status: "streaming",
+        trace: {}
+      };
+      state.history.push(round);
+      renderTimeline();
+      const requestHistory = state.history.slice(0, -1);
+      try {
+        const res = await fetch("/api/chat_stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            input,
+            workflow: workflowEl.value,
+            model_id: modelEl.value,
+            tools: getSelectedTools(),
+            history: requestHistory
+          })
+        });
+        if (!res.ok || !res.body) {
+          const txt = await res.text();
+          alert(`请求失败: ${txt || "unknown"}`);
+          state.history.pop();
+          renderTimeline();
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+        let shouldStop = false;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            let event;
+            try {
+              event = JSON.parse(line);
+            } catch (_) {
+              continue;
+            }
+            if (event.type === "agent_chunk" || event.type === "agent_done") {
+              round.status = "streaming";
+              const agent = event.agent;
+              const trace = ensureAgentTrace(round, agent);
+              if (agent === "planner") {
+                trace.reasoning = event.reasoning || "";
+                trace.output.plan = event.answer || "";
+              } else if (agent === "executor") {
+                trace.reasoning = event.reasoning || "";
+                trace.output.output = event.answer || "";
+              } else if (agent === "analyst") {
+                trace.reasoning = event.reasoning || "";
+                trace.output.final = event.answer || "";
+              }
+              renderTimeline();
+            } else if (event.type === "done") {
+              round.status = "done";
+              round.assistant = event.message?.assistant || "";
+              if (event.result?.agent_traces) {
+                round.trace = event.result.agent_traces;
+              }
+              renderTimeline();
+              shouldStop = true;
+            } else if (event.type === "__end__") {
+              round.status = "done";
+              shouldStop = true;
+            } else if (event.type === "error") {
+              round.status = "done";
+              alert(`执行失败: ${event.error || "unknown"}\n${event.detail || ""}`);
+              shouldStop = true;
+            }
+          }
+          if (shouldStop) {
+            reader.cancel().catch(() => {});
+            break;
+          }
+        }
+        inputEl.value = "";
+        saveState();
+      } catch (err) {
+        alert(`请求异常: ${err}`);
+        state.history.pop();
+        renderTimeline();
+      } finally {
+        setSending(false);
+      }
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    clearBtn.addEventListener("click", () => {
+      state.history = [];
+      renderTimeline();
+      saveState();
+    });
+    modelEl.addEventListener("change", () => {
+      loadTools().catch((err) => {
+        alert(`加载工具失败: ${err}`);
+      });
+      saveState();
+    });
+    workflowEl.addEventListener("change", saveState);
+    toolsEl.addEventListener("change", saveState);
+    inputEl.addEventListener("input", saveState);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    const cachedState = loadState();
+    if (cachedState && Array.isArray(cachedState.history)) {
+      state.history = cachedState.history;
+    }
+
+    Promise.all([loadWorkflows(), loadModels()]).then(() => {
+      restoreSelections(cachedState);
+      return loadTools();
+    }).then(() => {
+      restoreToolSelections(cachedState);
+      renderTimeline();
+      saveState();
+    }).catch((err) => {
+      timelineEl.innerHTML = `<div class="bubble assistant">初始化失败: ${esc(err)}</div>`;
+    });
+  </script>
+</body>
+</html>

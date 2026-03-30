@@ -36,7 +36,12 @@ def _build_chat_params(cfg: ModelConfig) -> dict:
         params["stop"] = cfg.stop
 
     if cfg.provider_params:
-        params.update(cfg.provider_params)
+        provider_params = dict(cfg.provider_params)
+        stream_options = provider_params.pop("stream_options", None)
+        if stream_options is not None:
+            model_kwargs = params.setdefault("model_kwargs", {})
+            model_kwargs["stream_options"] = stream_options
+        params.update(provider_params)
     return params
 
 

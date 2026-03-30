@@ -95,10 +95,30 @@ def estimate_usage_cost(usage: dict[str, Any], model: ModelConfig) -> Optional[d
     }
 
 
+def get_model_by_id(model_id: str) -> ModelConfig:
+    """Return model config by id."""
+    from config.model import MODEL_CHOICES
+
+    for item in MODEL_CHOICES:
+        if item["id"] == model_id:
+            return item["config"]
+    raise ValueError(f"Unknown model id: {model_id}")
+
+
+def list_models(provider: str | None = None) -> list[dict[str, str]]:
+    """Return available models for UI and API."""
+    from config.model import MODEL_CHOICES
+
+    items = MODEL_CHOICES
+    if provider:
+        items = [item for item in items if item["config"].provider == provider]
+    return [{"id": item["id"], "label": item["label"]} for item in items]
+
+
 def get_default_model(provider: str | None = None) -> ModelConfig:
     if provider in (None, "huoshan"):
         # Lazy import to avoid circular dependency with config.model
-        from config.model import HUOSHAN_DOUBAO
+        from config.model import DEFAULT_MODEL_ID
 
-        return HUOSHAN_DOUBAO
+        return get_model_by_id(DEFAULT_MODEL_ID)
     raise ValueError(f"Unknown provider: {provider}")

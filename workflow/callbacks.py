@@ -1,4 +1,4 @@
-"""Callback handlers for streaming and tool logs."""
+"""Callback handlers for streaming, usage, and structured traces."""
 from __future__ import annotations
 
 from typing import Any
@@ -94,3 +94,94 @@ class TokenUsageCallbackHandler(BaseCallbackHandler):
                 f"total={normalized['total_tokens']}\n",
                 flush=True,
             )
+
+
+class TraceCallbackHandler(BaseCallbackHandler):
+    """Collect structured LLM/tool traces for a single stage."""
+
+    def __init__(self, label: str, include_tools: bool = True) -> None:
+        self.label = label
+        self.include_tools = include_tools
+        self.llm_calls: list[dict[str, Any]] = []
+        self.tool_calls: list[dict[str, Any]] = []
+
+    def on_llm_end(self, response, **kwargs: Any) -> None:
+        usage = None
+        if getattr(response, "llm_output", None):
+            for key in ("token_usage", "usage", "usage_metadata"):
+                if key in response.llm_output:
+                    usage = response.llm_output[key]
+                    break
+
+        content = ""
+        reasoning = ""
+        if response.generations:
+            first_batch = response.generations[0]
+            if first_batch:
+                message = getattr(first_batch[0], "message", None)
+                if message is not None:
+                    content = getattr(message, "content", "") or ""
+                    reasoning = getattr(message, "additional_kwargs", {}).get("reasoning_content", "") or ""
+                    if usage is None:
+                        usage = getattr(message, "usage_metadata", None)
+
+        self.llm_calls.append(
+            {
+                "label": self.label,
+                "content": content,
+                "reasoning": reasoning,
+                "usage": normalize_usage(usage or {}),
+            }
+        )
+
+    def on_tool_start(self, serialized: dict, input_str: str, **kwargs: Any) -> None:
+        if not self.include_tools:
+            return
+        name = serialized.get("name") or serialized.get("id") or "tool"
+        self.tool_calls.append({"tool": name, "input": input_str, "output": None})
+
+    def on_tool_end(self, output: str, **kwargs: Any) -> None:
+        if not self.include_tools:
+            return
+        if self.tool_calls and self.tool_calls[-1].get("output") is None:
+            self.tool_calls[-1]["output"] = output
+        else:
+            self.tool_calls.append({"tool": "unknown", "input": "", "output": output})
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "label": self.label,
+            "llm_calls": self.llm_calls,
+            "tool_calls": self.tool_calls,
+        }
+
+
+class StageStreamCallbackHandler(BaseCallbackHandler):
+    """Collect stage-level streaming text and publish incremental updates."""
+
+    def __init__(self, label: str, on_update) -> None:
+        self.label = label
+        self.on_update = on_update
+        self.reasoning_text = ""
+        self.answer_text = ""
+
+    def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+        chunk = kwargs.get("chunk")
+        message = getattr(chunk, "message", None) if chunk is not None else None
+        reasoning = ""
+        if message is not None:
+            reasoning = getattr(message, "additional_kwargs", {}).get("reasoning_content", "") or ""
+
+        if reasoning:
+            self.reasoning_text += reasoning
+        else:
+            self.answer_text += token
+
+        self.on_update(
+            {
+                "type": "agent_chunk",
+                "agent": self.label.lower(),
+                "reasoning": self.reasoning_text,
+                "answer": self.answer_text,
+            }
+        )
